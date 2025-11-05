@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Queue Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial; background: #f4f4f4; padding: 20px; }
+h1 { text-align: center; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 50px; }
+th, td { padding: 10px; border: 1px solid #ddd; text-align: center; }
+th { background: #007BFF; color: white; }
+.alert { color: red; font-weight: bold; }
+canvas { background: white; border: 1px solid #ddd; margin-bottom: 50px; }
+</style>
+</head>
+<body>
+<h1>Queue Dashboard</h1>
+<table id="queueTable">
+<thead>
+<tr>
+<th>Queue Name</th>
+<th>Messages</th>
+<th>Max Capacity</th>
+<th>Threshold (%)</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody></tbody>
+</table>
+
+<div id="charts"></div>
+
+<script>
+const queues = {{ queues | tojson }};
+const tableBody = document.querySelector('#queueTable tbody');
+const chartsDiv = document.getElementById('charts');
+
+async function fetchQueueCounts() {
+    const res = await fetch('/queue_counts');
+    const data = await res.json();
+    tableBody.innerHTML = '';
+    data.forEach(q => {
+        const status = (q.count >= q.threshold/100*q.max) ? '<span class="alert">ALERT</span>' : 'OK';
+        tableBody.innerHTML += `<tr>
+            <td>${q.name}</td>
+            <td>${q.count}</td>
+            <td>${q.max}</td>
+            <td>${q.threshold}</td>
+            <td>${status}</td>
+        </tr>`;
+    });
+}
+
+async function drawCharts() {
+    chartsDiv.innerHTML = '';
+    for (const q of queues) {
+        const res = await fetch(`/queue_history/${q.name}`);
+        const history = await res.json();
+        const timestamps = history.map(h => h.timestamp);
+        const counts = history.map(h => h.count);
+        const canvas = document.createElement('canvas');
+        chartsDiv.appendChild(canvas);
+        new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: timestamps,
+                datasets: [{
+                    label: q.name,
+                    data: counts,
+                    borderColor: 'rgba(0,123,255,1)',
+                    backgroundColor: 'rgba(0,123,255,0.2)',
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true, max: q.max } }
+            }
+        });
+    }
+}
+
+async function updateDashboard() {
+    await fetchQueueCounts();
+    await drawCharts();
+}
+
+// Refresh every 30 seconds
+updateDashboard();
+setInterval(updateDashboard, 30000);
+</script>
+</body>
+</html>
